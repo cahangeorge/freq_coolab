@@ -1,0 +1,39 @@
+{
+    "strategy_name": "ExampleLSTMStrategy",
+    "params": {
+      "roi": {
+        "0": 0.04,
+        "186": 0.135,
+        "663": 0.069,
+        "948": 0
+      },
+      "buy": {
+        "threshold_buy": 0.8397980503398452,
+        "w0": 0.6433648374751934,
+        "w1": 0.17472411065652874,
+        "w2": 0.3212462405341749,
+        "w3": 0.2952582566978474,
+        "w4": 0.05066461739506635,
+        "w5": 0.04472480791261491,
+        "w6": 0.23502709765141744,
+        "w7": 0.4343572355184423,
+        "w8": 0.8809864347512445
+  
+      },
+      "protection": {},
+      "stoploss": {
+        "stoploss": -0.05
+      },
+      "trailing": {
+        "trailing_stop": true,
+        "trailing_stop_positive": 0.018,
+        "trailing_stop_positive_offset": 0.028999999999999998,
+        "trailing_only_offset_is_reached": true
+      },
+      "max_open_trades": {
+        "max_open_trades": 9
+      }
+    },
+    "ft_stratparam_v": 1,
+    "export_time": "2024-08-04 12:43:13.039963+00:00"
+  }

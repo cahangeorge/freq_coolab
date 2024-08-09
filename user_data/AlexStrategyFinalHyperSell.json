@@ -1,0 +1,41 @@
+{
+    "strategy_name": "ExampleLSTMStrategyHyper",
+    "params": {
+      "roi": {
+        "0": 0.04,
+        "186": 0.135,
+        "663": 0.069,
+        "948": 0
+      },
+      "buy": {
+        "threshold_buy": 0.06296,
+        "w0": 0.95345,
+        "w1": 0.19894,
+        "w2": 0.86081,
+        "w3": 0.03624,
+        "w4": 0.99217,
+        "w5": 0.59612,
+        "w6": 0.44939,
+        "w7": 0.72434,
+        "w8": 0.70263
+      },
+      "sell": {
+        "threshold_sell": 0.028396953016770032
+      },
+      "protection": {},
+      "stoploss": {
+        "stoploss": -0.286
+      },
+      "trailing": {
+        "trailing_stop": true,
+        "trailing_stop_positive": 0.296,
+        "trailing_stop_positive_offset": 0.369,
+        "trailing_only_offset_is_reached": false
+      },
+      "max_open_trades": {
+        "max_open_trades": 10
+      }
+    },
+    "ft_stratparam_v": 1,
+    "export_time": "2024-08-04 12:48:42.767953+00:00"
+  }
