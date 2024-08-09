@@ -13,22 +13,21 @@ from freqtrade.freqai.torch.PyTorchTrainerInterface import PyTorchTrainerInterfa
 
 from .datasets import WindowDataset
 
-
 logger = logging.getLogger(__name__)
 
 
 class PyTorchModelTrainer(PyTorchTrainerInterface):
     def __init__(
-        self,
-        model: nn.Module,
-        optimizer: Optimizer,
-        criterion: nn.Module,
-        device: str,
-        data_convertor: PyTorchDataConvertor,
-        model_meta_data: Dict[str, Any] = {},
-        window_size: int = 1,
-        tb_logger: Any = None,
-        **kwargs,
+            self,
+            model: nn.Module,
+            optimizer: Optimizer,
+            criterion: nn.Module,
+            device: str,
+            data_convertor: PyTorchDataConvertor,
+            model_meta_data: Dict[str, Any] = {},
+            window_size: int = 1,
+            tb_logger: Any = None,
+            **kwargs,
     ):
         """
         :param model: The PyTorch model to be trained.
@@ -87,7 +86,7 @@ class PyTorchModelTrainer(PyTorchTrainerInterface):
                 xb = xb.to(self.device)
                 yb = yb.to(self.device)
                 yb_pred = self.model(xb)
-                loss = self.criterion(yb_pred, yb)
+                loss = self.criterion(yb_pred.squeeze(), yb.squeeze())
 
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -101,9 +100,9 @@ class PyTorchModelTrainer(PyTorchTrainerInterface):
 
     @torch.no_grad()
     def estimate_loss(
-        self,
-        data_loader_dictionary: Dict[str, DataLoader],
-        split: str,
+            self,
+            data_loader_dictionary: Dict[str, DataLoader],
+            split: str,
     ) -> None:
         self.model.eval()
         for _, batch_data in enumerate(data_loader_dictionary[split]):
@@ -112,14 +111,14 @@ class PyTorchModelTrainer(PyTorchTrainerInterface):
             yb = yb.to(self.device)
 
             yb_pred = self.model(xb)
-            loss = self.criterion(yb_pred, yb)
+            loss = self.criterion(yb_pred.squeeze(), yb.squeeze())
             self.tb_logger.log_scalar(f"{split}_loss", loss.item(), self.test_batch_counter)
             self.test_batch_counter += 1
 
         self.model.train()
 
     def create_data_loaders_dictionary(
-        self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]
+            self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]
     ) -> Dict[str, DataLoader]:
         """
         Converts the input data to PyTorch tensors using a data loader.
@@ -148,8 +147,7 @@ class PyTorchModelTrainer(PyTorchTrainerInterface):
         the motivation here is that `n_steps` is easier to optimize and keep stable,
         across different n_obs - the number of data points.
         """
-        if not isinstance(self.n_steps, int):
-            raise ValueError("Either `n_steps` or `n_epochs` should be set.")
+        assert isinstance(self.n_steps, int), "Either `n_steps` or `n_epochs` should be set."
         n_batches = n_obs // self.batch_size
         n_epochs = max(self.n_steps // n_batches, 1)
         if n_epochs <= 10:
@@ -200,7 +198,7 @@ class PyTorchTransformerTrainer(PyTorchModelTrainer):
     """
 
     def create_data_loaders_dictionary(
-        self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]
+            self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]
     ) -> Dict[str, DataLoader]:
         """
         Converts the input data to PyTorch tensors using a data loader.
@@ -220,3 +218,109 @@ class PyTorchTransformerTrainer(PyTorchModelTrainer):
             data_loader_dictionary[split] = data_loader
 
         return data_loader_dictionary
+
+
+class PyTorchLSTMTrainer(PyTorchModelTrainer):
+    """
+    Creating a trainer for the LSTM model.
+    """
+    def __init__(
+            self,
+            model: nn.Module,
+            optimizer: Optimizer,
+            criterion: nn.Module,
+            device: str,
+            data_convertor: PyTorchDataConvertor,
+            model_meta_data: Dict[str, Any] = {},
+            window_size: int = 1,
+            tb_logger: Any = None,
+            **kwargs,
+    ):
+        super().__init__(
+            model, optimizer, criterion, device, data_convertor,
+            model_meta_data, window_size, tb_logger, **kwargs
+        )
+        self.learning_rate_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=0.2, patience=5, min_lr=0.00001
+        )
+
+    def fit(self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]):
+        self.model.train()
+
+        data_loaders_dictionary = self.create_data_loaders_dictionary(data_dictionary, splits)
+        n_obs = len(data_dictionary["train_features"])
+        n_epochs = self.n_epochs or self.calc_n_epochs(n_obs=n_obs)
+        batch_counter = 0
+        for epoch in range(n_epochs):
+            epoch_loss = 0
+            for _, batch_data in enumerate(data_loaders_dictionary["train"]):
+                xb, yb = batch_data
+                xb = xb.to(self.device)
+                yb = yb.to(self.device)
+                yb_pred = self.model(xb)
+                loss = self.criterion(yb_pred.squeeze(), yb.squeeze())
+
+                self.optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                self.optimizer.step()
+                self.tb_logger.log_scalar("train_loss", loss.item(), batch_counter)
+                batch_counter += 1
+                epoch_loss += loss.item()
+
+            # evaluation
+            if "test" in splits:
+                test_loss = self.estimate_loss(data_loaders_dictionary, "test")
+                self.learning_rate_scheduler.step(test_loss)  # Update the learning rate scheduler
+
+            logger.info(
+                f"Epoch {epoch + 1}/{n_epochs} - Train Loss: {epoch_loss / len(data_loaders_dictionary['train']):.4f}")
+
+    def create_data_loaders_dictionary(
+            self, data_dictionary: Dict[str, pd.DataFrame], splits: List[str]
+    ) -> Dict[str, DataLoader]:
+        """
+        Converts the input data to PyTorch tensors using a data loader.
+        Uses WindowDataset to create windows of data for LSTM.
+        """
+        data_loader_dictionary = {}
+        for split in splits:
+            x = self.data_convertor.convert_x(data_dictionary[f"{split}_features"], self.device)
+            y = self.data_convertor.convert_y(data_dictionary[f"{split}_labels"], self.device)
+            dataset = WindowDataset(x, y, self.window_size)
+            data_loader = DataLoader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=True,
+                drop_last=True,
+                num_workers=0,
+            )
+            data_loader_dictionary[split] = data_loader
+
+        return data_loader_dictionary
+
+    @torch.no_grad()
+    def estimate_loss(
+            self,
+            data_loader_dictionary: Dict[str, DataLoader],
+            split: str,
+    ) -> float:
+        self.model.eval()
+        total_loss = 0
+        num_batches = 0
+        for _, batch_data in enumerate(data_loader_dictionary[split]):
+            xb, yb = batch_data
+            xb = xb.to(self.device)
+            yb = yb.to(self.device)
+
+            yb_pred = self.model(xb)
+            loss = self.criterion(yb_pred.squeeze(), yb.squeeze())
+            total_loss += loss.item()
+            num_batches += 1
+            self.tb_logger.log_scalar(f"{split}_loss", loss.item(), self.test_batch_counter)
+            self.test_batch_counter += 1
+
+        self.model.train()
+        return total_loss / num_batches
+
+
+
